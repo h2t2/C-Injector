@@ -1,0 +1,119 @@
+#include <iostream>
+#include <string>
+#include <windows.h>
+#include <tlhelp32.h>
+#include <thread>
+#include <chrono>
+#include <random>
+
+void showWelcomeMessage() {
+    std::cout << "                                          _    __  _______ \n" //I don't know why in the code it looks like this but trust its fine
+        "                                         / \\   \\ \\/ / ____|\n"
+        "                                        / _ \\   \\  /|  _|  \n"
+        "                                       / ___ \\  /  \\| |___ \n"
+        "                                      /_/   \\_\\/_/\\_\\_____|\n"
+        "                                           Discord: h2t2\n";
+}
+
+std::wstring openFileExplorer() {
+    OPENFILENAME ofn;
+    wchar_t szFile[260] = { 0 };
+
+    ZeroMemory(&ofn, sizeof(ofn));
+    ofn.lStructSize = sizeof(ofn);
+    ofn.lpstrFile = szFile;
+    ofn.lpstrFile[0] = '\0';
+    ofn.nMaxFile = sizeof(szFile);
+    ofn.lpstrFilter = L"Dynamic Link Libraries\0*.dll\0";
+    ofn.nFilterIndex = 1;
+    ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_NOCHANGEDIR;
+
+    if (GetOpenFileName(&ofn)) {
+        return ofn.lpstrFile;
+    }
+    else {
+        return L"";
+    }
+}
+
+bool InjectDLL(DWORD processId, const std::wstring& dllPath) {
+    HANDLE hProcess = OpenProcess(PROCESS_CREATE_THREAD | PROCESS_QUERY_INFORMATION | PROCESS_VM_OPERATION | PROCESS_VM_WRITE | PROCESS_VM_READ, FALSE, processId);
+    if (hProcess == NULL) {
+        return false;
+    }
+
+    LPVOID dllPathAddr = VirtualAllocEx(hProcess, NULL, dllPath.size() * sizeof(wchar_t), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    if (dllPathAddr == NULL) {
+        CloseHandle(hProcess);
+        return false;
+    }
+
+    SIZE_T bytesWritten;
+    if (!WriteProcessMemory(hProcess, dllPathAddr, dllPath.c_str(), dllPath.size() * sizeof(wchar_t), &bytesWritten) || bytesWritten != dllPath.size() * sizeof(wchar_t)) {
+        VirtualFreeEx(hProcess, dllPathAddr, 0, MEM_RELEASE);
+        CloseHandle(hProcess);
+        return false;
+    }
+
+    HANDLE hThread = CreateRemoteThread(hProcess, NULL, 0, (LPTHREAD_START_ROUTINE)LoadLibraryW, dllPathAddr, 0, NULL);
+    if (hThread == NULL) {
+        VirtualFreeEx(hProcess, dllPathAddr, 0, MEM_RELEASE);
+        CloseHandle(hProcess);
+        return false;
+    }
+
+    WaitForSingleObject(hThread, INFINITE);
+    CloseHandle(hThread);
+
+    VirtualFreeEx(hProcess, dllPathAddr, 0, MEM_RELEASE);
+    CloseHandle(hProcess);
+
+    Sleep(1000); // Delay for 1 second before closing
+    exit(0);
+}
+
+void displayProcessInfo(DWORD processId) {
+    HANDLE hProcessSnap;
+    PROCESSENTRY32 pe32;
+
+    hProcessSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (hProcessSnap == INVALID_HANDLE_VALUE) {
+        return;
+    }
+
+    pe32.dwSize = sizeof(PROCESSENTRY32);
+
+    if (Process32First(hProcessSnap, &pe32)) {
+        do {
+            if (pe32.th32ProcessID == processId) {
+                std::cout << "Process ID: " << pe32.th32ProcessID << std::endl;
+                std::wcout << "Executable file: " << pe32.szExeFile << std::endl;
+                break;
+            }
+        } while (Process32Next(hProcessSnap, &pe32));
+    }
+
+    CloseHandle(hProcessSnap);
+}
+
+int main() {
+    showWelcomeMessage();
+
+    DWORD processId;
+    std::cout << "You can find the Process ID of the target process in Task Manager's Details section.\n";
+    std::cout << "Once you have the Process ID, enter it here:";
+    std::cin >> processId;
+
+    std::wstring dllPath = openFileExplorer();
+    if (dllPath.empty()) {
+        return 1;
+    }
+
+    InjectDLL(processId, dllPath);
+
+    displayProcessInfo(processId);
+
+    // feel free to add more code or edit this code to be better, this is currently just a brand new project I wanted to try to do to test my c++ skills :3
+
+    return 0;
+}
