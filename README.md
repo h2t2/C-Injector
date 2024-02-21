@@ -1,0 +1,1 @@
+This is my first time actually trying to make something in c++ this is probably gonna be the only c++ projects that I fully give out as a open source, I obviously will post more projects but yeah. Don't expect this to be that good and I wouldn't use it on super big games, but you do you! :)))))
